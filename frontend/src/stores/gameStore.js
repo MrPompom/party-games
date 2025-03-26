@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import gameService from '@/services/gameService';
+import api from '@/services/api';
 
 export const useGameStore = defineStore('game', {
   state: () => ({
@@ -18,14 +18,16 @@ export const useGameStore = defineStore('game', {
   
   getters: {
     getGameById: (state) => (id) => {
-      return state.games.find(game => game.id === id);
+      return state.games.find(game => game.id === id || game._id === id);
     },
     
     filteredGames: (state) => {
       let result = [...state.games];
       
       if (state.filters.category) {
-        result = result.filter(game => game.category === state.filters.category);
+        result = result.filter(game => 
+          game.categories && game.categories.includes(state.filters.category)
+        );
       }
       
       if (state.filters.playerCount) {
@@ -51,8 +53,19 @@ export const useGameStore = defineStore('game', {
     async fetchAllGames() {
       this.loading = true;
       try {
-        const response = await gameService.getAllGames();
-        this.games = response.data;
+        const response = await api.get('/games');
+        
+        // Vérifier si la réponse a une structure standard avec un objet "data"
+        if (response.data && response.data.data) {
+          // Transformer les _id en id pour une utilisation facile dans le frontend
+          this.games = response.data.data.map(game => ({
+            ...game,
+            id: game._id // Conserver _id mais ajouter un alias id
+          }));
+        } else {
+          this.games = response.data || [];
+        }
+        
         this.error = null;
       } catch (err) {
         this.error = err.message || 'Une erreur est survenue lors du chargement des jeux';
@@ -62,11 +75,47 @@ export const useGameStore = defineStore('game', {
       }
     },
     
+    async fetchGameById(id) {
+      this.loading = true;
+      try {
+        const response = await api.get(`/games/${id}`);
+        // Vérifier si la réponse a une propriété data
+        if (response.data && response.data.data) {
+          const game = response.data.data;
+          this.currentGame = {
+            ...game,
+            id: game._id // Ajouter un alias id
+          };
+        } else {
+          this.currentGame = response.data;
+        }
+        this.error = null;
+        return this.currentGame;
+      } catch (err) {
+        this.error = err.message || `Une erreur est survenue lors du chargement du jeu ${id}`;
+        console.error(`Erreur lors du chargement du jeu ${id}:`, err);
+        return null;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
     async fetchPopularGames() {
       this.loading = true;
       try {
-        const response = await gameService.getPopularGames();
-        this.popularGames = response.data;
+        const response = await api.get('/games/popular');
+        
+        // Vérifier si la réponse a la structure standard
+        if (response.data && response.data.data) {
+          // Transformer les _id en id pour une utilisation facile dans le frontend
+          this.popularGames = response.data.data.map(game => ({
+            ...game,
+            id: game._id // Conserver _id mais ajouter un alias id
+          }));
+        } else {
+          this.popularGames = response.data || [];
+        }
+        
         this.error = null;
       } catch (err) {
         // En cas d'erreur API, utiliser des données par défaut pour la démo
@@ -117,22 +166,6 @@ export const useGameStore = defineStore('game', {
             popularity: 4.7
           }
         ];
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async fetchGameById(id) {
-      this.loading = true;
-      try {
-        const response = await gameService.getGameById(id);
-        this.currentGame = response.data;
-        this.error = null;
-        return this.currentGame;
-      } catch (err) {
-        this.error = err.message || `Une erreur est survenue lors du chargement du jeu ${id}`;
-        console.error(`Erreur lors du chargement du jeu ${id}:`, err);
-        return null;
       } finally {
         this.loading = false;
       }

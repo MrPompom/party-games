@@ -7,6 +7,10 @@ const socketIo = require('socket.io');
 const path = require('path');
 require('dotenv').config();
 
+// Routes et WebSockets
+const apiRoutes = require('./routes/index');
+const setupSocketHandlers = require('./websocket/socketHandler');
+
 // Initialisation de l'app Express
 const app = express();
 const server = http.createServer(app);
@@ -26,28 +30,39 @@ app.use(cors({
   credentials: true
 }));
 
-// Routes de base pour démarrer
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Server is running' });
+// Route racine
+app.get('/', (req, res) => {
+  res.send('Party Games API - Welcome!');
 });
+
+// Configuration des routes API
+app.use('/api', apiRoutes);
 
 // Connexion à MongoDB
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/party-games')
   .then(() => console.log('Connecté à MongoDB'))
   .catch(err => console.error('Erreur de connexion MongoDB:', err));
 
-// Configuration de base des websockets
-io.on('connection', (socket) => {
-  console.log('Un client est connecté:', socket.id);
+// Configuration des WebSockets
+setupSocketHandlers(io);
+
+// Servir les fichiers statiques en production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/dist')));
   
-  socket.on('disconnect', () => {
-    console.log('Client déconnecté:', socket.id);
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
   });
+}
+
+// Middleware de gestion globale des erreurs
+app.use((err, req, res, next) => {
+  console.error('Erreur non gérée:', err);
   
-  // Exemple d'événement pour rejoindre une salle de jeu
-  socket.on('join-room', (roomId) => {
-    socket.join(roomId);
-    console.log(`Client ${socket.id} a rejoint la salle ${roomId}`);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Erreur serveur',
+    error: process.env.NODE_ENV === 'development' ? err : {}
   });
 });
 
